@@ -1,0 +1,28 @@
+Support set selected using the K-means method:
+
+PLAID:
+Air Conditioner:
+84 86 162 292 378 453 515 784 986 1007
+CFL:
+45 267 429 539 680 796 851 874 909 947 
+Fan:
+65 127 271 316 346 385 443 498 568 889
+Fridge:
+46 106 196 198 333 334 460 462 933 1063
+Hairdryer:
+155 176 202 230 448 602 610 691 715 1067
+Heater:
+135 137 140 205 281 322 350 351 661 717
+ILB:
+58 60 381 454 468 518 594 628 817 1030
+Laptop:
+50 236 325 583 644 693 756 929 1015 1070
+Microwave:
+239 261 338 464 559 585 783 808 963 1049
+Vacuum:
+56 698 727 728 812 814 842 879 967 1055
+Washing Machine:
+80 186 187 189 489 531 620 621 845 906
+
+WHITED:
+For the WHITED dataset, after selecting the support set based on the brand, the results are relatively stable with little fluctuation.
