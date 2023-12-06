@@ -45,37 +45,25 @@ class Protonet(nn.Module):
 
         n_class = xs.size(0)
         assert xq.size(0) == n_class
-        n_support = xs.size(1)  # support的张数，本程序训练的时候默认是每类5张query，测试的时候是15张
+        n_support = xs.size(1)
         n_query = xq.size(1)  # 60,5,5
         target_inds = torch.arange(0, n_class).view(n_class, 1, 1).expand(n_class, n_query, 1).long()
-        # 是一个[60*5*1]的tensor，有60个5行1列的矩阵，每个矩阵内的元素相同，分别为0-59，作为support的标签
         target_inds = Variable(target_inds, requires_grad=False)
 
         if xq.is_cuda:
             target_inds = target_inds.cuda()
 
-        # 把support和query合并到一起（即所有图片）进行特征提取，torch.cat就是把多个tensor拼接到一起的函数
-        # [600, 1, 28, 28],600 = 60*(5+5),60类，每类5张query5张support
         x = torch.cat([xs.view(n_class * n_support, *xs.size()[2:]),
                        xq.view(n_class * n_query, *xq.size()[2:])],
                       0)
         z = self.encoder.forward(x)  # z.size([600, 2048])
         z_dim = z.size(-1)  # 展平,z_dim = 2048
-        # print('z:', z.size())
-        # print(z_dim)
-        # z_proto = z[:n_class * n_support].view(n_class, n_support, z_dim).mean(1)  # 指定为0时，求得是行的平均值；指定为1时，求得是列的平均值。
         z_proto = z[:n_class * n_support].view(n_class, n_support, z_dim)  # 不取平均，保留每张图片的特征
-        # 特征原型 [60,2048],因为60个类每个类计算一次原型,也就是把5张图的tensor取了次平均，所以由300维变为60维了
-        # print('z_proto', z_proto.size())  # 60,10,2048
+
         zq = z[n_class * n_support:]  # 取出上面拼接的特征中属于query的部分，即300张query的特征，300,2048
-        # print('zq', zq.size())
-        # print(z_proto.size(), zq.size())
-        dists = euclidean_dist(zq, z_proto)  # query的特征到原型的距离[300, 60]，300张query图片与每个原型的距离
-        # print('dists:', dists.size())  # 改后为300x600，300张query与60个类中每个类10张原型的距离
+        dists = euclidean_dist(zq, z_proto)  
 
         log_p_y = F.log_softmax(-dists, dim=1).view(n_class, n_query, -1)
-        # 对数概率[60,5,600]dim=0是对列做归一化,dim=1是对行做归一化
-        # 使用欧氏距离时dists前要加负号，且不用乘10#####################################################################
 
         loss_val = -log_p_y.gather(2, target_inds).squeeze().view(-1).mean()
         # print('log_p_y:', log_p_y.size())
@@ -89,7 +77,6 @@ class Protonet(nn.Module):
         # print('y_hat:', y_hat.size(), y_hat)
         acc_val = torch.eq(y_hat, target_inds.squeeze()).float().mean()  # y_hat与target_inds相等的元素所占的比例
 
-        # 新建一个矩阵，表示每个样本与该样本属于的类的所有原型中距离最小的距离。尺寸为[60,5,60],即取log_p_y中每一列中每10个元素里最小的元素
         # log_p_y_less = torch.Tensor(n_class, n_query, n_class).zero_()
         # log_p_y_less = log_p_y_less.cuda()
         # for i in range(n_class):
@@ -181,31 +168,26 @@ def load_protonet_conv(**kwargs):
         # conv_block(hid_dim, z_dim),  # (64,64)
         # Flatten()  # (64,1,7,7)
 
-######################################
-###########小论文使用的4层CNN############
-######################################
-        # nn.Conv2d(1, 64, 3, stride=2, padding=1), nn.BatchNorm2d(64), nn.ReLU(),  # 1为通道数，RGB就改为3
-        # nn.Conv2d(64, 128, 3, stride=2, padding=1), nn.BatchNorm2d(128), nn.ReLU(),
-        # nn.Conv2d(128, 256, 3, stride=2, padding=1), nn.BatchNorm2d(256), nn.ReLU(),
-        # nn.Conv2d(256, 512, 3, stride=2, padding=1), nn.BatchNorm2d(512), nn.ReLU(),
-        # Flatten()
+
+        nn.Conv2d(1, 64, 3, stride=2, padding=1), nn.BatchNorm2d(64), nn.ReLU(),  # 1为通道数，RGB就改为3
+        nn.Conv2d(64, 128, 3, stride=2, padding=1), nn.BatchNorm2d(128), nn.ReLU(),
+        nn.Conv2d(128, 256, 3, stride=2, padding=1), nn.BatchNorm2d(256), nn.ReLU(),
+        nn.Conv2d(256, 512, 3, stride=2, padding=1), nn.BatchNorm2d(512), nn.ReLU(),
+        Flatten()
 
 
-        Conv3x3(3, 256, 5, 2, 2, False, pad_mode='reflect'),
-        Conv3x3(256, 256, 3, 1, 0, False),
-        ConvResBlock(256 * 1, 256 * 2, 4, 2, 0, 10, False),
-        ConvResBlock(256 * 2, 256 * 4, 4, 2, 0, 10, False),
-        ConvResBlock(256 * 4, 256 * 8, 2, 2, 0, 10, False),
-        MaybeBatchNorm2d(256 * 8, True, False),
-        ConvResBlock(256 * 8, 256 * 8, 3, 1, 0, 10, False),
-        ConvResBlock(256 * 8, 256 * 8, 3, 1, 0, 10, False),
-        ConvResNxN(256 * 8, 2048, 3, 1, 0, False),
-        MaybeBatchNorm2d(2048, True, True)
-
+        # Conv3x3(3, 256, 5, 2, 2, False, pad_mode='reflect'),
+        # Conv3x3(256, 256, 3, 1, 0, False),
+        # ConvResBlock(256 * 1, 256 * 2, 4, 2, 0, 10, False),
+        # ConvResBlock(256 * 2, 256 * 4, 4, 2, 0, 10, False),
+        # ConvResBlock(256 * 4, 256 * 8, 2, 2, 0, 10, False),
+        # MaybeBatchNorm2d(256 * 8, True, False),
+        # ConvResBlock(256 * 8, 256 * 8, 3, 1, 0, 10, False),
+        # ConvResBlock(256 * 8, 256 * 8, 3, 1, 0, 10, False),
+        # ConvResNxN(256 * 8, 2048, 3, 1, 0, False),
+        # MaybeBatchNorm2d(2048, True, True)
 
 
     )
-    # 输出的是一个512*1*1的特征向量
+    
     return Protonet(encoder)
-
-# 当输入为(200,1,28,28)的tensor时，模型的输出为(200,512)，也就是每个28*28的图片样本转换为一个512维度的向量
